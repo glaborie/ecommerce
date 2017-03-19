@@ -7,12 +7,16 @@ var engine = require('ejs-mate');
 var session = require('express-session');
 var cookieParser = require('cookie-parser');
 var flash = require('express-flash');
+var MongoStore = require('connect-mongo/es5')(session);
+var passport = require('passport');
 
-var User = require('./models/user.js');
+var secret = require('./config/secret');
+var User = require('./models/user');
+var Category = require('./models/category');
 
 var app = express();
 
-mongoose.connect('mongodb://root:abc123@ds013300.mlab.com:13300/ecommerce', function(err) {
+mongoose.connect(secret.database, function(err) {
   if (err)
     return console.log(err);
 
@@ -28,20 +32,44 @@ app.use(cookieParser());
 app.use(session({
   resave: true,
   saveUninitialized: true,
-  secret: 'glaborie@3241'
+  secret: secret.secretKey,
+  store: new MongoStore({
+    url: secret.database,
+    autoReconnect: true
+  })
 }));
 app.use(flash());
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(function(req, res, next) {
+  // middleware to make sure every route has the user value
+  res.locals.user = req.user;
+  next();
+});
+
+app.use(function(req, res, next) {
+  // find all the categories
+  Category.find({}, function(err, categories) {
+    if (err) return next(err);
+    res.locals.categories = categories;
+    next();
+  });
+});
 
 app.engine('ejs', engine);
 app.set('view engine', 'ejs');
 
 var mainRoutes = require('./routes/main');
 var userRoutes = require('./routes/user');
+var adminRoutes = require('./routes/admin');
+var apiRoutes = require('./api/api.js');
 
 app.use(mainRoutes);
 app.use(userRoutes);
+app.use(adminRoutes);
+app.use('/api', apiRoutes);
 
-app.listen(3000, function(err) {
+app.listen(secret.port, function(err) {
   if (err) throw err,
-  console.log("server is running on port 3000");
+  console.log("server is running on port " + secret.port);
 })
